@@ -1,0 +1,2 @@
+- how is STATE(items,maps...singletons, kbuckets) plumbed to deps?
+- what's the memory model for storage? ( can i create objects pretty liberally or better to make do with one Map and more complicated types/does it cost much to push deps around?)
