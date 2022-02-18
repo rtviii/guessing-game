@@ -5,8 +5,14 @@ use thiserror::Error;
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
+
     #[error("Unauthorized")]
     Unauthorized {},
+
+    #[error("GameNotFound")]
+    GameNotFound {
+        gamen:u8
+    },
     // Add any other custom errors you like here.
     // Look at https://docs.rs/thiserror/1.0.21/thiserror/ for details.
 }

@@ -1,3 +1,4 @@
+use rand::Rng;
 use std::vec;
 
 #[cfg(not(feature = "library"))]
@@ -29,11 +30,11 @@ pub fn instantiate(
         current_game_number: original_game_n,
         secret_number      : msg.originalHiddenNumber,
         last_attempt       : 0,
-        participants       : vec![] };
+        participants       : vec![] 
+    };
 
-    CURRENT_GAME_NUMBER.save(deps.storage,&original_game_n);
-    TOTALRECORD.save(deps.storage, "0", &state);
-
+    CURRENT_GAME_NUMBER.save(deps.storage,&original_game_n)?;
+    TOTALRECORD.save(deps.storage, "0", &state)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     Ok(Response::new()
@@ -49,7 +50,7 @@ pub fn execute(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    msg: ExecuteMsg,
+    msg : ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::SendGuess {guess}        => try_submit_guess(deps, info, guess),
@@ -78,136 +79,162 @@ fn query_current_game(deps: Deps) -> StdResult<CurrentGameResponse> {
     Ok(CurrentGameResponse {
             current_game_number: cur_game_number,
             direction          : match cur_game_state.last_attempt < cur_game_state.secret_number {
-                True  => Direction::Higher,
-                False => Direction::Lower
+                true  => Direction::Higher,
+                false => Direction::Lower
             },
             last_guess: cur_game_state.last_attempt
             })
-
-
-    
 }
-
 
 
 pub fn try_submit_guess(deps: DepsMut,info:MessageInfo, guess:u8) -> Result<Response, ContractError> {
+
+    // update participants for current game
+    // update last_attempt for current game
+
+    // if guessed correctly: 
+    // - generate a new random num 1-10
+    // - instantiate new game
+    // - update state
+
+    // if guessed incorrectly:
+    // - update last_attempt
+    // - return the message with the tip to go higher or lower
+
     let curgamen = CURRENT_GAME_NUMBER.load(deps.storage).unwrap();
+    TOTALRECORD.update(deps.storage, &curgamen.to_string(), |opt:Option<GameState>| -> Result<_,ContractError>{
+        match  opt {
+            Some(mut gamestate) =>{
+                if !gamestate.participants.contains(&info.sender){
+                    gamestate.participants.push(info.sender.clone());
+                    gamestate.last_attempt = guess;
+                }
+                Ok(gamestate)
+            },
+
+            None => Err(ContractError::GameNotFound{
+                gamen:  curgamen
+            })
+        }
+
+    })?;
+
     let curgame  = TOTALRECORD.load(deps.storage, &curgamen.to_string()).unwrap();
 
-    if curgame.secret_number > guess{
+    if curgame.secret_number == guess{
 
+        let nextgame_n     = curgamen + 1;
+        let mut rng        = rand::thread_rng();
+        let nextgame_state = GameState {
+            participants       : vec![],
+            secret_number      : rng.gen_range(1..11),
+            last_attempt       : 0,
+            current_game_number: nextgame_n
+        };
+
+        CURRENT_GAME_NUMBER.save(deps.storage, &nextgame_n)?;
+        TOTALRECORD.save(deps.storage, &nextgame_n.to_string(),&nextgame_state)?;
+
+        return Ok(Response::new().add_attribute("direction", "you guessed correctly!"))
     }
+
     // update last guess
     let resp = Response::new().add_attribute("direction", match curgame.secret_number > guess {
-
-        False => Direction::Higher{},
-        True  => Direction::Lower{}
+        false => "go higher",
+        true  => "go lower"
     });
-
-
 
     // build response
-
     // clean if guessed correctly
-
-    let resp = Response::new().add_attribute("direction", match curgame.secret_number > guess {
-        False => Direction::Higher{},
-        True  => Direction::Lower{}
-    });
-
     Ok(resp)
 }
 
-pub fn try_increment(deps: DepsMut) -> Result<Response, ContractError> {
 
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        state.count += 1;
-        Ok(state)
-    })?;
-
-    Ok(Response::new().add_attribute("method", "try_increment"))
-}
-
-pub fn try_reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        if info.sender != state.owner {
-            return Err(ContractError::Unauthorized {});
-        }
-        state.count = count;
-        Ok(state)
-    })?;
-    Ok(Response::new().add_attribute("method", "reset"))
-}
-
-
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-//     use cosmwasm_std::{coins, from_binary};
-
-//     #[test]
-//     fn proper_initialization() {
-//         let mut deps = mock_dependencies(&[]);
-
-//         let msg = InstantiateMsg { count: 17 };
-//         let info = mock_info("creator", &coins(1000, "earth"));
-
-//         // we can just call .unwrap() to assert this was a success
-//         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-//         assert_eq!(0, res.messages.len());
-
-//         // it worked, let's query the state
-//         let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-//         let value: CountResponse = from_binary(&res).unwrap();
-//         assert_eq!(17, value.count);
-//     }
-
-//     #[test]
-//     fn increment() {
-//         let mut deps = mock_dependencies(&coins(2, "token"));
-
-//         let msg = InstantiateMsg { count: 17 };
-//         let info = mock_info("creator", &coins(2, "token"));
-//         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-//         // beneficiary can release it
-//         let info = mock_info("anyone", &coins(2, "token"));
-//         let msg = ExecuteMsg::Increment {};
-//         let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-//         // should increase counter by 1
-//         let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-//         let value: CountResponse = from_binary(&res).unwrap();
-//         assert_eq!(18, value.count);
-//     }
-
-//     #[test]
-//     fn reset() {
-//         let mut deps = mock_dependencies(&coins(2, "token"));
-
-//         let msg = InstantiateMsg { count: 17 };
-//         let info = mock_info("creator", &coins(2, "token"));
-//         let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-//         // beneficiary can release it
-//         let unauth_info = mock_info("anyone", &coins(2, "token"));
-//         let msg = ExecuteMsg::Reset { count: 5 };
-//         let res = execute(deps.as_mut(), mock_env(), unauth_info, msg);
-//         match res {
-//             Err(ContractError::Unauthorized {}) => {}
-//             _ => panic!("Must return unauthorized error"),
+// pub fn try_reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
+//     STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
+//         if info.sender != state.owner {
+//             return Err(ContractError::Unauthorized {});
 //         }
-
-//         // only the original creator can reset the counter
-//         let auth_info = mock_info("creator", &coins(2, "token"));
-//         let msg = ExecuteMsg::Reset { count: 5 };
-//         let _res = execute(deps.as_mut(), mock_env(), auth_info, msg).unwrap();
-
-//         // should now be 5
-//         let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-//         let value: CountResponse = from_binary(&res).unwrap();
-//         assert_eq!(5, value.count);
-//     }
+//         state.count = count;
+//         Ok(state)
+//     })?;
+//     Ok(Response::new().add_attribute("method", "reset"))
 // }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::{coins, from_binary};
+
+    #[test]
+    fn proper_initialization() {
+        let mut deps = mock_dependencies(&[]);
+
+        let mut rng = rand::thread_rng();
+        let msg     = InstantiateMsg { originalHiddenNumber:rng.gen_range(1..11) };
+        let info    = mock_info("creator", &coins(1000, "earth"));
+
+        // we can just call .unwrap() to assert this was a success
+        let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        for msg in res.messages{
+            println!("Response message: {:?}", &msg);
+        }
+
+        // it worked, let's query the state
+        let res                        = query(deps.as_ref(), mock_env(), QueryMsg::GetCurrentGame {}).unwrap();
+        let value: CurrentGameResponse = from_binary(&res).unwrap();
+        assert_eq!(0, value.current_game_number);
+
+    }
+
+    // #[test]
+    // fn increment() {
+    //     let mut deps = mock_dependencies(&coins(2, "token"));
+
+    //     let msg = InstantiateMsg { count: 17 };
+    //     let info = mock_info("creator", &coins(2, "token"));
+    //     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    //     // beneficiary can release it
+    //     let info = mock_info("anyone", &coins(2, "token"));
+    //     let msg = ExecuteMsg::Increment {};
+    //     let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    //     // should increase counter by 1
+    //     let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
+    //     let value: CountResponse = from_binary(&res).unwrap();
+    //     assert_eq!(18, value.count);
+    // }
+
+    // #[test]
+    // fn reset() {
+    //     let mut deps = mock_dependencies(&coins(2, "token"));
+
+    //     let msg = InstantiateMsg { count: 17 };
+    //     let info = mock_info("creator", &coins(2, "token"));
+    //     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    //     // beneficiary can release it
+    //     let unauth_info = mock_info("anyone", &coins(2, "token"));
+    //     let msg = ExecuteMsg::Reset { count: 5 };
+    //     let res = execute(deps.as_mut(), mock_env(), unauth_info, msg);
+    //     match res {
+    //         Err(ContractError::Unauthorized {}) => {}
+    //         _ => panic!("Must return unauthorized error"),
+    //     }
+
+    //     // only the original creator can reset the counter
+    //     let auth_info = mock_info("creator", &coins(2, "token"));
+    //     let msg = ExecuteMsg::Reset { count: 5 };
+    //     let _res = execute(deps.as_mut(), mock_env(), auth_info, msg).unwrap();
+
+    //     // should now be 5
+    //     let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
+    //     let value: CountResponse = from_binary(&res).unwrap();
+    //     assert_eq!(5, value.count);
+    // }
+}
