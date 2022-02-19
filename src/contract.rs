@@ -42,6 +42,7 @@ pub fn instantiate(
         .add_attribute("owner", info.sender)
         .add_attribute("secret_number","*")
         .add_attribute("games_played_so_far", original_game_n.to_string())
+        
     )
 }
 
@@ -69,9 +70,11 @@ fn query_current_participants(deps: Deps) -> StdResult<CurrentParticipantsRespon
     let curn    = CURRENT_GAME_NUMBER.load(deps.storage).unwrap();
     let curgame = TOTALRECORD.load(deps.storage, &curn.to_string()).unwrap();
 
-    Ok(CurrentParticipantsResponse{participants:curgame.participants})
+    Ok(CurrentParticipantsResponse{
+        participants:curgame.participants
+    })
 }
-fn query_current_game(deps: Deps) -> StdResult<CurrentGameResponse> {
+fn query_current_game(deps: Deps)         -> StdResult<CurrentGameResponse> {
 
     let cur_game_number = CURRENT_GAME_NUMBER.load(deps.storage).unwrap();
     let cur_game_state  = TOTALRECORD.load(deps.storage, &cur_game_number.to_string())?;
@@ -150,24 +153,13 @@ pub fn try_submit_guess(deps: DepsMut,info:MessageInfo, guess:u8) -> Result<Resp
 }
 
 
-// pub fn try_reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-//     STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-//         if info.sender != state.owner {
-//             return Err(ContractError::Unauthorized {});
-//         }
-//         state.count = count;
-//         Ok(state)
-//     })?;
-//     Ok(Response::new().add_attribute("method", "reset"))
-// }
-
-
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, from_binary};
+    use cosmwasm_std::{coins, from_binary, Attribute, Addr};
 
     #[test]
     fn proper_initialization() {
@@ -177,38 +169,89 @@ mod tests {
         let msg     = InstantiateMsg { originalHiddenNumber:rng.gen_range(1..11) };
         let info    = mock_info("creator", &coins(1000, "earth"));
 
-        // we can just call .unwrap() to assert this was a success
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len());
         for msg in res.messages{
             println!("Response message: {:?}", &msg);
         }
 
-        // it worked, let's query the state
         let res                        = query(deps.as_ref(), mock_env(), QueryMsg::GetCurrentGame {}).unwrap();
         let value: CurrentGameResponse = from_binary(&res).unwrap();
         assert_eq!(0, value.current_game_number);
+    }
+
+    #[test]
+    fn guess_above_and_query() {
+        let mut deps = mock_dependencies(&coins(2, "token"));
+
+        let msg             = InstantiateMsg {originalHiddenNumber: 2};
+        let info            = mock_info("creator", &coins(2, "token"));
+        let instantiate_res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        assert!(instantiate_res.attributes.len()>0);
+
+        let usrinfo  = mock_info("user1", &coins(2, "token"));
+        let guessmsg = ExecuteMsg::SendGuess { guess:3};
+
+        let guess_res = execute(deps.as_mut(), mock_env(), usrinfo, guessmsg).unwrap();
+        assert_eq!(Attribute::from(( "direction","go higher" )),guess_res.attributes.get(0).unwrap());
 
     }
 
-    // #[test]
-    // fn increment() {
-    //     let mut deps = mock_dependencies(&coins(2, "token"));
 
-    //     let msg = InstantiateMsg { count: 17 };
-    //     let info = mock_info("creator", &coins(2, "token"));
-    //     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    #[test]
+    fn check_participants_accumulation() {
 
-    //     // beneficiary can release it
-    //     let info = mock_info("anyone", &coins(2, "token"));
-    //     let msg = ExecuteMsg::Increment {};
-    //     let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        let mut deps = mock_dependencies(&coins(2, "token"));
 
-    //     // should increase counter by 1
-    //     let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-    //     let value: CountResponse = from_binary(&res).unwrap();
-    //     assert_eq!(18, value.count);
-    // }
+        let msg             = InstantiateMsg {originalHiddenNumber: 2};
+        let info            = mock_info("creator", &coins(2, "token"));
+        let _ = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let info1      = mock_info("user1", &coins(2, "token"));
+        let info2      = mock_info("user2", &coins(2, "token"));
+
+        let msg1 = ExecuteMsg::SendGuess { guess:3};
+        let msg2 = ExecuteMsg::SendGuess { guess:5};
+
+        execute(deps.as_mut(), mock_env(), info1, msg1).unwrap();
+        execute(deps.as_mut(), mock_env(), info2, msg2).unwrap();
+
+        // check query
+        let mut _participants_resp = query(deps.as_ref(), mock_env(), QueryMsg::GetParticipants{}).unwrap();
+        let participants_resp: CurrentParticipantsResponse = from_binary(&_participants_resp).unwrap();
+
+        assert_eq!(vec![Addr::unchecked("user1"), Addr::unchecked("user2")], participants_resp.participants);
+
+    }
+
+
+
+
+    #[test]
+    fn guess_correctly() {
+        let mut deps = mock_dependencies(&coins(2, "token"));
+
+        let msg             = InstantiateMsg {originalHiddenNumber: 2};
+        let info            = mock_info("creator", &coins(2, "token"));
+        let _instantiate_res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let usrinfo           = mock_info("winner", &coins(2, "token"));
+        let correct_guess_msg = ExecuteMsg::SendGuess { guess:2};
+
+        let guess_res = execute(deps.as_mut(), mock_env(), usrinfo, correct_guess_msg).unwrap();
+
+        for a in guess_res.attributes{
+            println!(">>>>>>>>>>>>>> attribtue: {:?}", a);
+        }
+
+        let q                 = QueryMsg::GetCurrentGame{};
+        let current_game_resp                  = query(deps.as_ref(),mock_env(),  q).unwrap();
+
+        let next_game_resp:CurrentGameResponse = from_binary(&current_game_resp).unwrap();
+        assert_eq!(1,next_game_resp.current_game_number);
+
+    }
 
     // #[test]
     // fn reset() {
