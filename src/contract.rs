@@ -1,4 +1,3 @@
-use rand::Rng;
 use std::vec;
 
 #[cfg(not(feature = "library"))]
@@ -126,11 +125,12 @@ pub fn try_submit_guess(deps: DepsMut,info:MessageInfo, guess:u8) -> Result<Resp
 
     if curgame.secret_number == guess{
 
-        let nextgame_n     = curgamen + 1;
-        let mut rng        = rand::thread_rng();
+        let nextgame_n = curgamen + 1;
+        let kindarand  = ((( vec![":^)"].as_ptr() as u64 ) >> 16 ) & 0x7 ) + 1;
+
         let nextgame_state = GameState {
             participants       : vec![],
-            secret_number      : rng.gen_range(1..11),
+            secret_number      : kindarand as u8,
             last_attempt       : 0,
             current_game_number: nextgame_n
         };
@@ -165,8 +165,8 @@ mod tests {
     fn proper_initialization() {
         let mut deps = mock_dependencies(&[]);
 
-        let mut rng = rand::thread_rng();
-        let msg     = InstantiateMsg { originalHiddenNumber:rng.gen_range(1..11) };
+        let kindarand  = ((( vec![":^)"].as_ptr() as u64 ) >> 16 ) & 0x7 ) + 1;
+        let msg     = InstantiateMsg { originalHiddenNumber:kindarand as u8 };
         let info    = mock_info("creator", &coins(1000, "earth"));
 
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
@@ -252,32 +252,4 @@ mod tests {
         assert_eq!(1,next_game_resp.current_game_number);
 
     }
-
-    // #[test]
-    // fn reset() {
-    //     let mut deps = mock_dependencies(&coins(2, "token"));
-
-    //     let msg = InstantiateMsg { count: 17 };
-    //     let info = mock_info("creator", &coins(2, "token"));
-    //     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-    //     // beneficiary can release it
-    //     let unauth_info = mock_info("anyone", &coins(2, "token"));
-    //     let msg = ExecuteMsg::Reset { count: 5 };
-    //     let res = execute(deps.as_mut(), mock_env(), unauth_info, msg);
-    //     match res {
-    //         Err(ContractError::Unauthorized {}) => {}
-    //         _ => panic!("Must return unauthorized error"),
-    //     }
-
-    //     // only the original creator can reset the counter
-    //     let auth_info = mock_info("creator", &coins(2, "token"));
-    //     let msg = ExecuteMsg::Reset { count: 5 };
-    //     let _res = execute(deps.as_mut(), mock_env(), auth_info, msg).unwrap();
-
-    //     // should now be 5
-    //     let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-    //     let value: CountResponse = from_binary(&res).unwrap();
-    //     assert_eq!(5, value.count);
-    // }
 }

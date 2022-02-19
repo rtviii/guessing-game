@@ -5,30 +5,19 @@
     {
       "type": "object",
       "required": [
-        "increment"
+        "send_guess"
       ],
       "properties": {
-        "increment": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "reset"
-      ],
-      "properties": {
-        "reset": {
+        "send_guess": {
           "type": "object",
           "required": [
-            "count"
+            "guess"
           ],
           "properties": {
-            "count": {
+            "guess": {
               "type": "integer",
-              "format": "int32"
+              "format": "uint8",
+              "minimum": 0.0
             }
           }
         }

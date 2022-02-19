@@ -5,10 +5,22 @@
     {
       "type": "object",
       "required": [
-        "get_count"
+        "get_participants"
       ],
       "properties": {
-        "get_count": {
+        "get_participants": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "get_current_game"
+      ],
+      "properties": {
+        "get_current_game": {
           "type": "object"
         }
       },

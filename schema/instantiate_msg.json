@@ -3,12 +3,13 @@
   "title": "InstantiateMsg",
   "type": "object",
   "required": [
-    "count"
+    "originalHiddenNumber"
   ],
   "properties": {
-    "count": {
+    "originalHiddenNumber": {
       "type": "integer",
-      "format": "int32"
+      "format": "uint8",
+      "minimum": 0.0
     }
   }
 }
